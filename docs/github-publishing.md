@@ -1,57 +1,34 @@
-# GitHub Publishing Guide
+# GitHub publishing
 
-Run from the repository root:
+This project: **Claude Science Bridge for Windows**  
+https://github.com/priyamthakar/claude-science-bridge-for-windows  
+Default branch: `windows-native`
 
-```bash
-cd ~/.claude-science/proxy
-./scripts/self-test.sh
-git init -b main
-git status --ignored
+Inspired by [Jyx0208/claude-science-api-bridge](https://github.com/Jyx0208/claude-science-api-bridge) (MIT). Do not push secrets to either repo.
+
+## Before every push
+
+From `D:\claude-science-bridge-for-windows` (or the clone root):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\self-test.ps1
+git status
+git diff --cached
 ```
 
-Confirm these are ignored and not staged:
+Confirm these are **not** staged:
 
 - `config.json`
 - `.env`
 - `certs/`
-- `*.plist`
 - `__pycache__/`
 - logs
+- API keys, OAuth tokens, `encryption.key`
 
-Then:
-
-```bash
-git add .
-git status
-git commit -m "Initial open-source release"
-```
-
-Create a GitHub repository, then:
-
-```bash
-git remote add origin git@github.com:YOUR_NAME/claude-science-third-party-api-proxy.git
-git push -u origin main
-```
-
-If using HTTPS instead of SSH:
-
-```bash
-git remote add origin https://github.com/YOUR_NAME/claude-science-third-party-api-proxy.git
-git push -u origin main
-```
-
-Before every push:
-
-```bash
-./scripts/self-test.sh
-git diff --cached
-git status --ignored
-```
-
-If this machine has a backend API key configured and you are validating a real installation, also run:
-
-```bash
-./scripts/verify-proxy.sh
+```powershell
+git add <docs and code>
+git commit -m "Your message"
+git push origin windows-native
 ```
 
 Never paste API keys or token contents into GitHub issues.

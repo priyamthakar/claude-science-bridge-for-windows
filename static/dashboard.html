@@ -965,10 +965,10 @@ async function installUpdateNow() {
   }
 }
 function openLatestRelease() {
-  window.open(updateInfo.html_url || 'https://github.com/Jyx0208/claude-science-api-bridge/releases/latest', '_blank', 'noopener');
+  window.open(updateInfo.html_url || 'https://github.com/priyamthakar/claude-science-bridge-for-windows', '_blank', 'noopener');
 }
 function copyUpdateCommand() {
-  const cmd = updateInfo.install_command || 'curl -fsSL https://raw.githubusercontent.com/Jyx0208/claude-science-api-bridge/main/scripts/install-macos-app.sh | bash';
+  const cmd = updateInfo.install_command || 'git -C D:\\claude-science-bridge-for-windows pull --ff-only';
   navigator.clipboard.writeText(cmd).then(() => toast('Update command copied', 'success'));
 }
 function dismissUpdateBanner() {

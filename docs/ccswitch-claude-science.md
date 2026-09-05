@@ -1,4 +1,6 @@
-# CC Switch 集成：Claude Science
+# CC Switch integration: Claude Science
+
+This repository is **Claude Science Bridge for Windows**. On Windows, Dashboard **Sync** writes `~/.cc-switch` if that database exists. Installing or replacing `CC Switch.app` remains macOS-only.
 
 本项目的目标应用是 **Claude Science**，不是 Claude Desktop。
 

@@ -1,4 +1,4 @@
-# Windows starter for claude-science-api-bridge (proxy.py is cross-platform)
+# Windows starter for Claude Science Bridge for Windows (proxy.py is cross-platform)
 # Usage: powershell -ExecutionPolicy Bypass -File start-windows.ps1
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "scripts\windows-lib.ps1")

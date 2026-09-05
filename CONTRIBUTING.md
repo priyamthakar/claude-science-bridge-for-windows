@@ -2,6 +2,16 @@
 
 ## Development Setup
 
+Windows (this fork’s primary path):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-safe.ps1 -SkipService
+powershell -ExecutionPolicy Bypass -File .\scripts\self-test.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
+```
+
+macOS / Linux:
+
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
@@ -20,8 +30,7 @@ pip install -r requirements-dev.txt
 
 ## Pull Request Checklist
 
-- `./scripts/self-test.sh` passes.
-- If a backend API key is configured on the machine, `./scripts/verify-proxy.sh` passes.
-- Optional: `python3 -m pytest -q` passes.
-- README and `AGENTS.md` still match behavior.
+- `scripts/self-test.ps1` (Windows) or `./scripts/self-test.sh` passes.
+- If a backend API key is configured, `scripts/verify-proxy.ps1` / `./scripts/verify-proxy.sh` passes.
+- README, `docs/windows.md`, and `AGENTS.md` still match behavior.
 - No secrets are staged.

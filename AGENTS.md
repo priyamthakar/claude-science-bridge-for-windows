@@ -1,8 +1,11 @@
 # Agent Operating Manual
 
-This repository is designed so an AI coding agent can configure Claude Science to use an OpenAI-compatible third-party API through a local Anthropic-compatible proxy.
+This repository is **Claude Science Bridge for Windows**: a local Anthropic-compatible proxy so Claude Science and other `ANTHROPIC_BASE_URL` clients can use a third-party OpenAI-compatible API.
 
-Read this file first, then follow `docs/agent-runbook.md`.
+GitHub: https://github.com/priyamthakar/claude-science-bridge-for-windows  
+Inspired by: https://github.com/Jyx0208/claude-science-api-bridge (MIT)
+
+Read this file first, then follow `docs/windows.md` and `docs/agent-runbook.md`.
 
 ## Prime Directive
 
@@ -21,70 +24,33 @@ Only use advanced HTTPS interception after the user explicitly approves it for t
 
 ## Goal
 
-Make Claude Science usable with DeepSeek, OpenAI, or another OpenAI-compatible API provider.
-If the user needs image understanding, choose a vision-capable backend model and preserve image inputs instead of replacing them with text placeholders.
+Make Claude Science (and any `ANTHROPIC_BASE_URL` client) usable with DeepSeek, OpenAI, 9Router, or another OpenAI-compatible provider.
+If the user needs image understanding, choose a vision-capable backend model and preserve image inputs.
 
-On Linux, support covers the local proxy, Dashboard, service installation, and compatible clients that honor `ANTHROPIC_BASE_URL`. Claude Science desktop startup and daemon patches are macOS-only.
+On this Windows machine:
 
-On Windows, support covers the native Python proxy, English Dashboard, a per-user logon scheduled task, and `ANTHROPIC_BASE_URL` clients. If Ubuntu-24.04 already has `claude-science`, Dashboard Open/Restart/Patch/Token talk to that WSL binary (`scripts/wsl-science.sh`).
+1. Run the proxy on `127.0.0.1:9876` via `start-windows.ps1`.
+2. Set `$env:ANTHROPIC_BASE_URL='http://127.0.0.1:9876'`.
+3. Configure API key and model mapping in `config.json` or the English Dashboard.
+4. If Ubuntu-24.04 already has `claude-science`, start it with `scripts/start-claude-science.ps1` (or Dashboard Open Claude Science) so WSL Science inherits the bridge.
+5. Verify `/health`, `/v1/models`, `/v1/messages`, and recent-requests.
 
-The safe path is:
+Do not install WSL, edit system proxy, or bind 443 unless the user explicitly asks.
 
-1. Run a local HTTP proxy on `127.0.0.1:9876`.
-2. Set `ANTHROPIC_BASE_URL=http://127.0.0.1:9876`.
-3. Generate a local fake Claude Science OAuth token.
-4. Configure an API key and model mapping in `config.json` or the dashboard.
-5. Configure `model_aliases` and `model_list_mode=aliases` so Claude Science can show third-party model names.
-6. Choose `*_upstream_mode=anthropic` for providers with native Anthropic endpoints; otherwise use `openai`.
-7. Set `inline_image_policy=preserve` or `auto` only when the selected backend supports image input.
-8. Optionally enable `proxy_auth_mode=required` only when the launch path will include the secret.
-9. On macOS, start or restart Claude Science with `scripts/start-claude-science.sh`. On Windows, start the proxy with `start-windows.ps1` and point clients at `ANTHROPIC_BASE_URL`. If WSL Claude Science is already installed, start it with `scripts/start-claude-science.ps1`.
-10. Verify `/v1/models` and `/v1/messages` reach the proxy and the backend succeeds.
+## Repository map
 
-## Repository Map
+- `proxy.py` — FastAPI proxy, Anthropic Messages ↔ OpenAI Chat Completions
+- `start-windows.ps1` / `start.bat` — foreground Windows start
+- `install.bat` / `scripts/install-safe.ps1` — venv, deps, optional logon task
+- `scripts/wsl-science.sh` — WSL start/stop/token/patch/env for official Science
+- `scripts/start-claude-science.ps1` — Windows wrapper around `wsl-science.sh start`
+- `scripts/doctor.ps1`, `verify-proxy.ps1`, `self-test.ps1`, `stop.ps1`, `uninstall.ps1`
+- `docs/windows.md` — portable Windows + WSL guide
+- `README-windows.md` — this PC (9Router slots, daily boot)
+- `config.example.json` — sanitized template (`config.json` is git-ignored)
+- `setup-network.sh` — advanced HTTPS interception; opt-in only
 
-- `proxy.py`: FastAPI proxy, Anthropic Messages API to OpenAI Chat Completions translation.
-- `setup-token.py`: creates a local fake Claude Science OAuth token.
-- `start.sh`: foreground development start.
-- `install.sh`: safe install, LaunchAgent, global `ANTHROPIC_BASE_URL`.
-- `scripts/doctor.sh`: read-only state inspection.
-- `scripts/install-safe.sh`: safe install entry point for agents.
-- `scripts/patch-daemon-auth.sh`: byte-length-preserving OAuth/profile URL patch for the local daemon copy.
-- `scripts/patch-daemon-models.sh`: byte-length-preserving model picker patch for the local daemon copy.
-- `scripts/start-claude-science.sh`: refreshes token, reapplies daemon patches, and restarts the app.
-- `scripts/verify-proxy.sh`: end-to-end proxy verification after provider config.
-- `scripts/build-macos-release.sh`: builds the one-click macOS `.app` and `.dmg`.
-- `scripts/install-macos-app.sh`: downloads latest DMG, installs the app to `~/Applications`, removes quarantine, and opens it.
-- `scripts/smoke-test-release-package.sh`: tests the `.app` launcher in a temporary HOME without touching the user's real config.
-- `scripts/uninstall.sh`: removes LaunchAgent and launchctl env only.
-- `packaging/macos/`: app launcher and release packaging scripts.
-- `setup-network.sh`: advanced HTTPS interception. Treat as opt-in only.
-- `docs/agent-runbook.md`: step-by-step procedure for agents.
-- `docs/network-interception.md`: advanced interception notes.
-- `docs/linux.md`: Linux systemd/fallback installation and current limitations.
-- `docs/windows.md`: Windows-native proxy, PowerShell install, English Dashboard, optional WSL Science start.
-- `start-windows.ps1` / `install.bat` / `start.bat`: Windows foreground start and install entry points.
-- `scripts/install-safe.ps1`, `scripts/doctor.ps1`, `scripts/verify-proxy.ps1`, `scripts/self-test.ps1`, `scripts/stop.ps1`, `scripts/uninstall.ps1`: Windows agent entry points.
-- `docs/troubleshooting.md`: failure modes and fixes.
-- `config.example.json`: public, sanitized config template.
-
-## Success Criteria
-
-The task is complete when all of these pass:
-
-On macOS/Linux:
-
-```bash
-./scripts/self-test.sh
-./scripts/verify-proxy.sh
-curl -sS http://127.0.0.1:9876/health
-curl -sS http://127.0.0.1:9876/v1/models
-curl -sS http://127.0.0.1:9876/v1/messages \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"claude-sonnet-4-5","max_tokens":32,"messages":[{"role":"user","content":"Say OK"}]}'
-```
-
-On Windows:
+## Success criteria (Windows)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\self-test.ps1
@@ -95,14 +61,13 @@ Invoke-RestMethod http://127.0.0.1:9876/v1/models
 
 And `http://127.0.0.1:9876/api/recent-requests` shows a successful backend request.
 
-For a vision-capable model, also run:
+Vision:
 
-```bash
-VERIFY_IMAGE=1 ./scripts/verify-proxy.sh
+```powershell
+$env:VERIFY_IMAGE='1'
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-proxy.ps1
 ```
 
-This sends a generated red PNG through the Anthropic image format. Do not claim image support is working until this passes.
+## If blocked
 
-## If Blocked
-
-Use `scripts/doctor.sh` first. It is read-only and safe. Do not guess at network state.
+Use `scripts/doctor.ps1` first. It is read-only. Do not guess at network state.

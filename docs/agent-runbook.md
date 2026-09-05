@@ -1,317 +1,89 @@
 # Agent Runbook
 
-This is the main step-by-step guide for an AI agent configuring this project on a user's Mac, Linux, or Windows machine.
-默认按安全模式执行；不要修改 Clash、VPN、TUN、DNS、系统代理、`/etc/hosts`、系统证书信任或 443 端口。
+Step-by-step guide for an AI agent configuring **Claude Science Bridge for Windows**.
 
-## Phase 0: Safety Check
+Default to safe mode. Do not modify Clash, VPN, TUN, DNS, system proxy, `/etc/hosts`, system certificates, or port 443.
 
-Run only read-only checks first:
+Repo: https://github.com/priyamthakar/claude-science-bridge-for-windows  
+This PC: `D:\claude-science-bridge-for-windows`
 
-```bash
-./scripts/doctor.sh
+## Phase 0: Safety check
+
+Read-only:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
 ```
 
 Inspect:
 
-- macOS version
-- Linux distribution if not macOS
 - Windows version and whether WSL Ubuntu-24.04 is present
-- Python path and version
-- whether Claude Science is installed
-- whether `~/.claude-science/encryption.key` exists
-- whether `ANTHROPIC_BASE_URL` is already set
-- whether ports `9876`, `9877`, `443`, and `8765` are in use
-- whether the proxy is already healthy
+- Python path and `.venv`
+- whether `config.json` exists (do not print keys)
+- whether `ANTHROPIC_BASE_URL` is set
+- whether ports `9876` and `8765` are in use
+- whether `/health` is already ok
+- whether `claude-science` exists in WSL (`~/.local/bin/claude-science`)
 
-Do not change Clash or any network proxy tool.
+Do not change Clash or any network proxy tool. Do not install WSL unless the user asks.
 
-## Phase 1: Install Safe Mode
-
-Safe mode does not modify `/etc/hosts`, certificates, Clash, DNS, TUN, VPN, or port 443.
-
-```bash
-./scripts/install-safe.sh
-```
-
-On Windows:
+## Phase 1: Install
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-safe.ps1
 powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
 ```
 
-See `docs/windows.md`. Do not install WSL, edit system proxy, or bind port 443.
-
 This should:
 
-1. Install Python dependencies.
-2. Create `config.json` from `config.example.json` if missing.
-3. Generate a fake OAuth token with `setup-token.py` when Claude Science local state exists.
-4. On macOS, patch the local daemon copy for OAuth/profile calls when possible.
-5. On macOS, patch the local daemon model menu so Claude Science can show BYOK model names.
-6. On macOS, set `ANTHROPIC_BASE_URL=http://127.0.0.1:9876` via `launchctl` and install a user LaunchAgent.
-7. On Linux, install `claude-science-api-bridge.service` as a systemd user service, or use a fallback user background process when systemd user is unavailable.
+1. Create `.venv` and install Python dependencies
+2. Create `config.json` from `config.example.json` if missing
+3. Apply provider settings from environment variables when set
+4. Optionally register logon task `ClaudeScienceApiBridge`
+5. Start the proxy on `127.0.0.1:9876`
 
-The script prefers a project-local `.venv` so it does not depend on global Python packages.
-If `~/.claude-science/encryption.key` does not exist yet, it may open Claude Science once so the app can create local state.
-On Linux, Claude Science desktop startup and daemon patches are skipped because the app is macOS-only; use `ANTHROPIC_BASE_URL` with compatible clients. See `docs/linux.md`.
+See `docs/windows.md`.
 
-## Phase 2: Configure Provider
+## Phase 2: Configure provider
 
-Prefer the dashboard:
+Open http://127.0.0.1:9876/dashboard
 
-```bash
-open http://127.0.0.1:9876/dashboard
+Never echo secrets into chat logs.
+
+Prefer Dashboard or `/api/fetch-models` before finalizing aliases. Hidden 9Router `oc/*` models may need a manual `config.json` alias (see `README-windows.md`).
+
+Use `*_upstream_mode=anthropic` when the provider has a native Anthropic Messages endpoint; otherwise `openai`.
+
+## Phase 3: Optional WSL Claude Science
+
+Only if `claude-science` is already installed in Ubuntu-24.04:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-claude-science.ps1
 ```
 
-For unattended setup, write `config.json` directly. Never echo secrets into chat logs.
-`scripts/install-safe.sh` also accepts provider settings from environment variables and persists them into ignored `config.json`.
+Dashboard **Open Claude Science** does the same: `serve --port 8765 --no-browser --detached` with `ANTHROPIC_BASE_URL=http://127.0.0.1:9876`, then opens the login URL in a Windows browser.
 
-First decide the upstream protocol:
+OAuth token minting uses WSL `~/.claude-science/encryption.key` via Dashboard **Refresh OAuth token**.
 
-- Use `*_upstream_mode=anthropic` when the provider has a native Anthropic Messages endpoint. This preserves tool calls, thinking, and SSE events best.
-- Use `*_upstream_mode=openai` when the provider only exposes an OpenAI-compatible endpoint. The proxy will translate Anthropic ↔ OpenAI.
+## Phase 4: Verify
 
-Dashboard Provider presets can fill base URL, upstream mode, default model, and model aliases. Presets never fill API keys.
-
-Prefer Dashboard or `/api/fetch-models` to fetch the provider's real `/v1/models` list before finalizing model aliases. The model fetcher follows the same candidate strategy as cc-switch: try `/v1/models`, versioned `/models`, and variants after stripping known Anthropic-compatible suffixes such as `/anthropic`, `/api/anthropic`, `/apps/anthropic`, `/api/coding`, and `/coding`.
-
-Minimum DeepSeek config:
-
-```json
-{
-  "deepseek_api_key": "REDACTED",
-  "deepseek_base_url": "https://api.deepseek.com",
-  "default_backend": "deepseek",
-  "force_model": "deepseek-chat"
-}
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-proxy.ps1
+Invoke-RestMethod http://127.0.0.1:9876/api/recent-requests
 ```
 
-Generic OpenAI-compatible provider:
+Vision:
 
-```json
-{
-  "custom_api_key": "REDACTED",
-  "custom_base_url": "https://provider.example.com",
-  "custom_upstream_mode": "openai",
-  "default_backend": "custom",
-  "force_model": "provider-model-name",
-  "model_aliases": [
-    {
-      "id": "claude-opus-4-8",
-      "display_name": "Provider Model",
-      "backend": "custom",
-      "model": "provider-model-name"
-    }
-  ],
-  "model_list_mode": "aliases",
-  "model_menu_strategy": "claude_compatible",
-  "inline_image_policy": "auto"
-}
+```powershell
+$env:VERIFY_IMAGE='1'
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-proxy.ps1
 ```
 
-If the provider base URL already includes `/v1`, keep it; the proxy normalizes both forms.
+## Uninstall
 
-For SiliconFlow Kimi:
-
-```json
-{
-  "custom_api_key": "REDACTED",
-  "custom_base_url": "https://api.siliconflow.cn",
-  "custom_upstream_mode": "openai",
-  "default_backend": "custom",
-  "force_model": "Pro/moonshotai/Kimi-K2.6",
-  "model_aliases": [
-    {
-      "id": "claude-opus-4-8",
-      "display_name": "Kimi K2.6 Pro++ (Vision)",
-      "backend": "custom",
-      "model": "Pro/moonshotai/Kimi-K2.6"
-    }
-  ],
-  "model_list_mode": "aliases",
-  "model_menu_strategy": "claude_compatible",
-  "inline_image_policy": "preserve",
-  "reasoning_content_policy": "never"
-}
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
 ```
 
-DeepSeek native Anthropic:
-
-```json
-{
-  "deepseek_api_key": "REDACTED",
-  "deepseek_base_url": "https://api.deepseek.com/anthropic",
-  "deepseek_upstream_mode": "anthropic",
-  "default_backend": "deepseek",
-  "force_model": "deepseek-chat",
-  "model_list_mode": "aliases"
-}
-```
-
-Use `inline_image_policy=preserve` only when the selected model supports image input. Use `omit` for text-only models.
-Keep `reasoning_content_policy=never` unless the user explicitly asks to debug provider reasoning payloads.
-
-If the provider rejects large `max_tokens`, set caps:
-
-```json
-{
-  "model_token_caps": {
-    "provider-model-name": 8192
-  },
-  "default_max_tokens_cap": 0
-}
-```
-
-## Phase 2.5: Configure Third-Party Model Menu
-
-Claude Science may use hard-coded local daemon model names for the UI. Do not try to solve this with DNS or Clash.
-
-Use `model_aliases` for the proxy and `scripts/patch-daemon-models.sh` for the local daemon menu:
-
-```bash
-./scripts/patch-daemon-models.sh
-```
-
-Expected:
-
-- `config.json` contains `model_list_mode=aliases`.
-- `config.json` contains `model_menu_strategy=claude_compatible`, unless the user explicitly wants raw third-party model IDs.
-- `config.json` contains aliases such as `claude-opus-4-8` with third-party display names.
-- `/v1/models` returns the alias display names.
-- The daemon binary still passes its executable check.
-
-The model patch only edits `~/.claude-science/bin/claude-science`, not the app bundle in `/Applications`.
-Alias routing has priority over `force_model`, so a selected Claude-compatible menu slot maps to its own real backend model.
-
-## Phase 2.6: Optional Path-Secret
-
-To reduce local misuse of the user's third-party key, agents may enable path-secret mode:
-
-```json
-{
-  "proxy_auth_token": "REDACTED_RANDOM_SECRET",
-  "proxy_auth_mode": "required"
-}
-```
-
-Then rerun:
-
-```bash
-./scripts/start-claude-science.sh
-```
-
-The script will set `ANTHROPIC_BASE_URL` to `http://127.0.0.1:9876/<secret>` and mask the secret in terminal output.
-Do not enable `required` unless the launch path is updated too; otherwise Claude Science will receive 403 from `/v1/messages`.
-
-## Phase 3: Verify Proxy
-
-Run:
-
-```bash
-./scripts/self-test.sh
-./scripts/verify-proxy.sh
-curl -sS http://127.0.0.1:9876/health
-curl -sS http://127.0.0.1:9876/v1/models
-curl -sS http://127.0.0.1:9876/v1/messages \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"claude-sonnet-4-5","max_tokens":32,"messages":[{"role":"user","content":"Reply OK"}]}'
-```
-
-Expected:
-
-- `/health` returns `"status":"ok"`.
-- `/v1/models` returns third-party alias model objects when `model_list_mode=aliases`.
-- `/v1/messages` returns an Anthropic-style message object.
-- `/api/recent-requests` shows backend `success`.
-- `./scripts/verify-proxy.sh` exits with `proxy verification passed`.
-
-If the user asked for image understanding and the selected model is vision-capable, run:
-
-```bash
-VERIFY_IMAGE=1 ./scripts/verify-proxy.sh
-```
-
-Expected:
-
-- The script generates a red PNG.
-- The proxy converts Anthropic image input into OpenAI-compatible image input.
-- The backend response confirms `red`.
-
-Do not report image support as working until this test passes.
-
-## Phase 4: Start Claude Science
-
-If the app is not running:
-
-```bash
-open -a "Claude Science"
-```
-
-If it is already running, restart it:
-
-```bash
-./scripts/start-claude-science.sh
-```
-
-Prefer `scripts/start-claude-science.sh` because it refreshes fake OAuth token, reapplies auth/model daemon patches, sets `ANTHROPIC_BASE_URL`, and restarts the app.
-
-Verify the daemon:
-
-```bash
-lsof -nP -iTCP:8765 -sTCP:LISTEN
-curl -sS http://127.0.0.1:9876/api/recent-requests
-```
-
-Expected requests include `GET /v1/models` and `POST /v1/messages`.
-
-## Phase 5: If Auth/Profile Fails
-
-First confirm safe-mode requests are working. Many Claude Science model calls use `ANTHROPIC_BASE_URL` and do not require HTTPS interception.
-
-If the app still reports the session is invalid:
-
-1. Run `./scripts/doctor.sh`.
-2. Check whether `/api/oauth/profile`, `/api/oauth/account`, or `/v1/oauth/*` hit the proxy.
-3. Regenerate token:
-
-```bash
-python3 setup-token.py
-```
-
-4. Restart Claude Science.
-
-Only consider `docs/network-interception.md` if the daemon uses hard-coded Anthropic URLs that bypass `ANTHROPIC_BASE_URL`.
-
-## Phase 6: Cleanup
-
-To remove safe-mode installation:
-
-```bash
-./scripts/uninstall.sh
-```
-
-This removes the user LaunchAgent/launchctl state on macOS, or the systemd user service/fallback process on Linux. It does not delete API keys unless the user asks.
-
-## Phase 7: Before Publishing
-
-Run:
-
-```bash
-./scripts/self-test.sh
-./scripts/smoke-test-release-package.sh
-git status --ignored
-```
-
-Confirm ignored local files are not staged:
-
-- `config.json`
-- `.env`
-- `certs/`
-- `*.plist`
-- logs
-- Python caches
-- `dist/` release artifacts
-
-The macOS release package is documented in `docs/release-packaging.md`.
-Linux support is documented in `docs/linux.md`.
+Removes the logon task and user `ANTHROPIC_BASE_URL`. Leaves keys and logs.

@@ -42,7 +42,9 @@ Your backend  (DeepSeek, OpenAI, Kimi, OpenRouter, 9Router, any OpenAI-compatibl
 4. `/v1/messages` is translated to the configured backend and streamed back.
 5. Optional: a current-user scheduled task (`ClaudeScienceApiBridge`) restarts the proxy at logon. No admin, no system proxy, no hosts file, no port 443.
 
-On Windows the live `/v1/models` list **is** the model menu. There is no Claude Science.app daemon to patch.
+On Windows, `/v1/models` is the menu for `ANTHROPIC_BASE_URL` clients. If WSL Claude Science is installed, Dashboard **Patch model menu** also patches that Linux binary.
+
+This machine’s copy lives at `D:\claude-science-bridge-for-windows`.
 
 ## What Windows gets
 
@@ -51,9 +53,9 @@ On Windows the live `/v1/models` list **is** the model menu. There is no Claude 
 | Local proxy on `127.0.0.1:9876` | `proxy.py` + `start-windows.ps1` / `start.bat` |
 | Dashboard | English UI at `/dashboard` |
 | Login auto-start | Scheduled task `ClaudeScienceApiBridge` (no admin) |
-| User `ANTHROPIC_BASE_URL` | Dashboard "Set user ANTHROPIC_BASE_URL" or `setx` |
-| Model menu | Live `/v1/models` (no macOS daemon binary patch) |
-| Updates | `git pull` then rerun `scripts/install-safe.ps1` |
+| User `ANTHROPIC_BASE_URL` | Dashboard button + `setx` + WSL profile |
+| Model menu | Live `/v1/models`; optional WSL binary patch |
+| Updates | Dashboard git pull / `scripts/install-safe.ps1` |
 
 ## Feature map (Windows + WSL)
 

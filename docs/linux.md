@@ -1,6 +1,8 @@
-# Linux 适配说明
+# Linux notes
 
-Linux 支持目前覆盖本地代理、Dashboard、配置管理和 OpenAI 兼容第三方 API 转换。Claude Science 桌面应用本身仍是 macOS 应用，因此 Linux 侧不会启动 Claude Science，也不会执行 macOS daemon OAuth/模型菜单补丁。
+This repository is **Claude Science Bridge for Windows** (https://github.com/priyamthakar/claude-science-bridge-for-windows), a port of [Jyx0208/claude-science-api-bridge](https://github.com/Jyx0208/claude-science-api-bridge). The Python proxy still runs on Linux.
+
+Linux 支持目前覆盖本地代理、Dashboard、配置管理和 OpenAI 兼容第三方 API 转换。Claude Science 桌面应用本身仍是 macOS 应用，因此 Linux 侧不会启动 Claude Science，也不会执行 macOS daemon OAuth/模型菜单补丁。优先路径是 Windows，见 [windows.md](windows.md)。
 
 适合的 Linux 使用场景：
 
@@ -12,8 +14,9 @@ Linux 支持目前覆盖本地代理、Dashboard、配置管理和 OpenAI 兼容
 ## 安装
 
 ```bash
-git clone https://github.com/Jyx0208/claude-science-api-bridge.git
-cd claude-science-api-bridge
+git clone https://github.com/priyamthakar/claude-science-bridge-for-windows.git
+cd claude-science-bridge-for-windows
+git checkout windows-native
 ./scripts/install-safe.sh
 ```
 
