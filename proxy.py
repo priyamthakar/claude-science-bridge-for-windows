@@ -422,6 +422,96 @@ def mask_proxy_url(url: str) -> str:
     return re.sub(r"(://[^/]+/).+", r"\1****", url)
 
 
+WINDOWS_TASK_NAME = "ClaudeScienceApiBridge"
+
+
+def platform_family() -> str:
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return sys.platform
+
+
+def platform_capabilities() -> dict:
+    family = platform_family()
+    macos = family == "macos"
+    return {
+        "platform": sys.platform,
+        "os_family": family,
+        "capabilities": {
+            "desktop_app": macos,
+            "daemon_patch": macos,
+            "launch_agent": macos,
+            "ccswitch_app": macos,
+            "dmg_update": macos,
+            "user_service": True,
+            "user_env": True,
+            "open_dashboard": True,
+        },
+    }
+
+
+def run_powershell(script: str, timeout: int = 45) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-Command",
+            script,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def install_windows_user_service() -> dict:
+    runner = PROXY_DIR / "scripts" / "windows-service-run.ps1"
+    if not runner.exists():
+        return {"ok": False, "error": f"Windows service runner not found: {runner}"}
+    logs = Path.home() / ".claude-science" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    ps = f"""
+$ErrorActionPreference = 'Stop'
+$taskName = {json.dumps(WINDOWS_TASK_NAME)}
+$runner = {json.dumps(str(runner))}
+$workdir = {json.dumps(str(PROXY_DIR))}
+$arg = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $runner + '"'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arg -WorkingDirectory $workdir
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+try {{ Start-ScheduledTask -TaskName $taskName }} catch {{ }}
+Write-Output $taskName
+"""
+    result = run_powershell(ps, timeout=45)
+    output = "\n".join(x for x in [result.stdout.strip(), result.stderr.strip()] if x)
+    if result.returncode != 0:
+        return {"ok": False, "error": output[-1200:] or "Failed to register Windows logon task."}
+    return {"ok": True, "task_name": WINDOWS_TASK_NAME, "runner": str(runner)}
+
+
+def set_windows_user_env(name: str, value: str) -> dict:
+    result = subprocess.run(
+        ["setx", name, value],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    output = "\n".join(x for x in [result.stdout.strip(), result.stderr.strip()] if x)
+    if result.returncode != 0:
+        return {"ok": False, "error": output[-800:] or "setx failed"}
+    return {
+        "ok": True,
+        "note": "Saved to the current Windows user environment. Open a new terminal to pick it up.",
+    }
+
+
 def normalize_version_tag(version: str) -> str:
     return str(version or "").strip().lstrip("vV")
 
@@ -2901,7 +2991,11 @@ async def api_update_install(force: bool = False):
     if state.get("running"):
         return {"ok": True, "install": state}
     if sys.platform != "darwin":
-        return {"ok": False, "error": "一键更新目前只支持 macOS。", "install": state}
+        return {
+            "ok": False,
+            "error": "One-click DMG install is macOS-only. On Windows, pull the latest git checkout and rerun scripts/install-safe.ps1.",
+            "install": state,
+        }
 
     update_info = await fetch_update_info(refresh=True)
     if not update_info.get("ok"):
@@ -3391,6 +3485,11 @@ async def api_ccswitch_apply_provider(request: Request):
 
 @app.post("/api/patch-model-menu")
 async def api_patch_model_menu():
+    if sys.platform != "darwin":
+        return {
+            "ok": False,
+            "error": "Daemon model-menu patch is macOS-only. On Windows the live /v1/models menu is the source of truth for ANTHROPIC_BASE_URL clients.",
+        }
     try:
         result = subprocess.run(
             ["bash", str(PROXY_DIR / "scripts" / "patch-daemon-models.sh")],
@@ -3404,9 +3503,27 @@ async def api_patch_model_menu():
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/api/open-dashboard")
+async def api_open_dashboard():
+    """Open the local dashboard in the default browser."""
+    import webbrowser
+
+    url = f"http://{config.proxy_host}:{config.proxy_port}/dashboard"
+    try:
+        webbrowser.open(url)
+        return {"ok": True, "url": url}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "url": url}
+
+
 @app.post("/api/open-claude-science")
 async def api_open_claude_science():
     """Open the Claude Science app (safe: launches the app only, no network/cert/port changes)."""
+    if sys.platform != "darwin":
+        return {
+            "ok": False,
+            "error": "Claude Science desktop is macOS-only. On Windows open the dashboard and point clients at ANTHROPIC_BASE_URL.",
+        }
     try:
         result = subprocess.run(
             ["open", "-a", "Claude Science"],
@@ -3709,29 +3826,59 @@ async def api_test_backend(request: Request):
 
 @app.post("/api/setup-global-env")
 async def api_setup_global_env():
-    """Set ANTHROPIC_BASE_URL globally on macOS via launchctl."""
+    """Persist ANTHROPIC_BASE_URL for the current user (no admin, no system proxy changes)."""
     proxy_url = proxy_base_url()
+    masked = mask_proxy_url(proxy_url)
     try:
-        subprocess.run(
-            ["launchctl", "setenv", "ANTHROPIC_BASE_URL", proxy_url],
-            capture_output=True, text=True, timeout=5,
-        )
-        return {"ok": True, "proxy_url": mask_proxy_url(proxy_url)}
+        if sys.platform == "win32":
+            result = set_windows_user_env("ANTHROPIC_BASE_URL", proxy_url)
+            if not result.get("ok"):
+                return result
+            result["proxy_url"] = masked
+            return result
+        if sys.platform == "darwin":
+            subprocess.run(
+                ["launchctl", "setenv", "ANTHROPIC_BASE_URL", proxy_url],
+                capture_output=True, text=True, timeout=5,
+            )
+            return {"ok": True, "proxy_url": masked}
+        if shutil.which("systemctl"):
+            subprocess.run(
+                ["systemctl", "--user", "set-environment", f"ANTHROPIC_BASE_URL={proxy_url}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return {"ok": True, "proxy_url": masked}
+        return {
+            "ok": False,
+            "error": "No user-environment helper is available. Set ANTHROPIC_BASE_URL in your shell profile.",
+            "proxy_url": masked,
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 @app.post("/api/install-service")
 async def api_install_service():
-    """Install proxy as a macOS LaunchAgent for auto-start on login."""
-    plist_name = "com.byok.claude-science-proxy.plist"
-    plist_dir = Path.home() / "Library" / "LaunchAgents"
-    plist_path = plist_dir / plist_name
-
+    """Install a per-user auto-start service (Windows logon task, macOS LaunchAgent, or Linux systemd user)."""
     proxy_url = proxy_base_url()
+    try:
+        if sys.platform == "win32":
+            result = install_windows_user_service()
+            if result.get("ok"):
+                result["proxy_url"] = mask_proxy_url(proxy_url)
+            return result
 
-    python_dir = str(Path(sys.executable).parent)
-    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+        if sys.platform.startswith("linux"):
+            return {
+                "ok": False,
+                "error": "Install the Linux user service from a shell: ./scripts/install-safe.sh",
+            }
+
+        plist_name = "com.byok.claude-science-proxy.plist"
+        plist_dir = Path.home() / "Library" / "LaunchAgents"
+        plist_path = plist_dir / plist_name
+        python_dir = str(Path(sys.executable).parent)
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -3766,16 +3913,13 @@ async def api_install_service():
 </dict>
 </plist>"""
 
-    try:
         plist_dir.mkdir(parents=True, exist_ok=True)
         with open(plist_path, "w") as f:
             f.write(plist_content)
 
-        # Unload old, load new
         subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
         subprocess.run(["launchctl", "load", str(plist_path)], capture_output=True)
 
-        # Also save a copy in the proxy dir
         copy_path = PROXY_DIR / plist_name
         with open(copy_path, "w") as f:
             f.write(plist_content)
@@ -3873,9 +4017,13 @@ async def api_anthropic_catch_all(request: Request, path: str):
 
 @app.get("/health")
 async def health():
+    info = platform_capabilities()
     return {
         "status": "ok",
         "app_version": APP_VERSION,
+        "platform": info["platform"],
+        "os_family": info["os_family"],
+        "capabilities": info["capabilities"],
         "deepseek_configured": bool(config.deepseek_api_key),
         "openai_configured": bool(config.openai_api_key),
         "custom_configured": bool(config.custom_api_key and config.custom_base_url),

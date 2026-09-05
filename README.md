@@ -1,8 +1,18 @@
 # Claude Science API Bridge
 
+Windows-native port of [Jyx0208/claude-science-api-bridge](https://github.com/Jyx0208/claude-science-api-bridge): a local Anthropic-compatible proxy so `ANTHROPIC_BASE_URL` clients can use DeepSeek, OpenAI, Kimi, or any OpenAI-compatible API.
+
+This is unofficial. Anthropic's [Claude Science](https://claude.com/product/claude-science) talks to Claude models only. This proxy keeps that wire format and sends inference to the backend you configure.
+
+**How it works:** a client sends Anthropic `/v1/messages` to `http://127.0.0.1:9876`. The proxy maps Claude slot IDs to your real model names, translates (or passthroughs) the request, and returns Anthropic-shaped streams. On Windows the Dashboard is English; login auto-start is a scheduled task, not a LaunchAgent. Official Science on Windows is still WSL 2 — start this proxy first, then `scripts/start-claude-science.ps1` if you already have `claude-science serve`.
+
+[Windows setup](docs/windows.md) · [upstream macOS DMG](https://github.com/Jyx0208/claude-science-api-bridge/releases/latest) · [Linux](docs/linux.md) · [Agent handbook](AGENTS.md) · [Troubleshooting](docs/troubleshooting.md)
+
+---
+
 _让 Claude Science 使用 DeepSeek、OpenAI、硅基流动 Kimi 以及任意 OpenAI 兼容第三方 API 的本地桥接工具。_
 
-[最新 macOS DMG](https://github.com/Jyx0208/claude-science-api-bridge/releases/latest) · [Linux 说明](docs/linux.md) · [Agent 手册](AGENTS.md) · [故障排查](docs/troubleshooting.md)
+[最新 macOS DMG](https://github.com/Jyx0208/claude-science-api-bridge/releases/latest) · [Windows](docs/windows.md) · [Linux 说明](docs/linux.md) · [Agent 手册](AGENTS.md) · [故障排查](docs/troubleshooting.md)
 
 Claude Science API Bridge 是一个运行在本机的 Anthropic-compatible 代理。它接收 Claude Science 发出的 `/v1/messages`、`/v1/models` 和 OAuth/profile 请求，再把推理请求转成第三方 API 能理解的格式。项目同时提供 macOS 一键安装包、Dashboard、模型菜单补丁、读图适配、一键更新，以及给本地 AI agent 执行的完整操作手册。
 
@@ -46,6 +56,25 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:9876"
 ```
 
 详细说明见 [docs/linux.md](docs/linux.md)。
+
+### Windows 用户
+
+Windows 原生支持本地代理、英文 Dashboard、配置管理、登录计划任务，以及任何遵守 `ANTHROPIC_BASE_URL` 的客户端。macOS 桌面补丁 / DMG / CC Switch.app 不会出现在 Windows Dashboard 里。
+
+```powershell
+git clone https://github.com/Jyx0208/claude-science-api-bridge.git
+cd claude-science-api-bridge
+powershell -ExecutionPolicy Bypass -File .\scripts\install-safe.ps1
+powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
+```
+
+安装后给兼容客户端设置：
+
+```powershell
+$env:ANTHROPIC_BASE_URL='http://127.0.0.1:9876'
+```
+
+官方 Claude Science 在 Windows 上仍是 WSL 2 里的 Linux 二进制。若本机已安装 `claude-science serve`，可在代理启动后运行 `scripts/start-claude-science.ps1`。完整说明见 [docs/windows.md](docs/windows.md)。
 
 ## 这个项目解决什么问题
 
@@ -104,6 +133,7 @@ flowchart LR
 | --- | --- | --- |
 | macOS 一键安装包 | 已支持 | `.app + .dmg`，首次打开即可配置 provider |
 | Linux 安全安装 | 已支持 | systemd user service 优先，fallback 用户后台进程兜底 |
+| Windows 原生安装 | 已支持 | PowerShell 安装、英文 Dashboard、登录计划任务、`ANTHROPIC_BASE_URL` 客户端 |
 | Anthropic to OpenAI 翻译 | 已支持 | 支持流式、非流式、工具调用、工具结果和图片 block |
 | Anthropic 原生透传 | 已支持 | 适合有原生 Anthropic endpoint 的 provider |
 | 第三方模型菜单 | 已支持 | Claude-facing ID 保持兼容，显示名和真实模型来自第三方 |

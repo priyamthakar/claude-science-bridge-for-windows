@@ -26,6 +26,8 @@ If the user needs image understanding, choose a vision-capable backend model and
 
 On Linux, support covers the local proxy, Dashboard, service installation, and compatible clients that honor `ANTHROPIC_BASE_URL`. Claude Science desktop startup and daemon patches are macOS-only.
 
+On Windows, support covers the native Python proxy, English Dashboard, a per-user logon scheduled task, and `ANTHROPIC_BASE_URL` clients. Official Claude Science on Windows is the Linux binary under WSL 2; use `scripts/start-claude-science.ps1` only when that binary is already installed.
+
 The safe path is:
 
 1. Run a local HTTP proxy on `127.0.0.1:9876`.
@@ -36,7 +38,7 @@ The safe path is:
 6. Choose `*_upstream_mode=anthropic` for providers with native Anthropic endpoints; otherwise use `openai`.
 7. Set `inline_image_policy=preserve` or `auto` only when the selected backend supports image input.
 8. Optionally enable `proxy_auth_mode=required` only when the launch path will include the secret.
-9. Start or restart Claude Science with `scripts/start-claude-science.sh`.
+9. On macOS, start or restart Claude Science with `scripts/start-claude-science.sh`. On Windows, start the proxy with `start-windows.ps1` and point clients at `ANTHROPIC_BASE_URL`. If WSL Claude Science is already installed, start it with `scripts/start-claude-science.ps1`.
 10. Verify `/v1/models` and `/v1/messages` reach the proxy and the backend succeeds.
 
 ## Repository Map
@@ -60,12 +62,17 @@ The safe path is:
 - `docs/agent-runbook.md`: step-by-step procedure for agents.
 - `docs/network-interception.md`: advanced interception notes.
 - `docs/linux.md`: Linux systemd/fallback installation and current limitations.
+- `docs/windows.md`: Windows-native proxy, PowerShell install, English Dashboard, optional WSL Science start.
+- `start-windows.ps1` / `install.bat` / `start.bat`: Windows foreground start and install entry points.
+- `scripts/install-safe.ps1`, `scripts/doctor.ps1`, `scripts/verify-proxy.ps1`, `scripts/self-test.ps1`, `scripts/stop.ps1`, `scripts/uninstall.ps1`: Windows agent entry points.
 - `docs/troubleshooting.md`: failure modes and fixes.
 - `config.example.json`: public, sanitized config template.
 
 ## Success Criteria
 
 The task is complete when all of these pass:
+
+On macOS/Linux:
 
 ```bash
 ./scripts/self-test.sh
@@ -75,6 +82,15 @@ curl -sS http://127.0.0.1:9876/v1/models
 curl -sS http://127.0.0.1:9876/v1/messages \
   -H 'Content-Type: application/json' \
   -d '{"model":"claude-sonnet-4-5","max_tokens":32,"messages":[{"role":"user","content":"Say OK"}]}'
+```
+
+On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\self-test.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-proxy.ps1
+Invoke-RestMethod http://127.0.0.1:9876/health
+Invoke-RestMethod http://127.0.0.1:9876/v1/models
 ```
 
 And `http://127.0.0.1:9876/api/recent-requests` shows a successful backend request.

@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import json
+import sys
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
@@ -332,7 +333,7 @@ def test_update_installer_prefers_release_dmg_asset():
     env = proxy.update_installer_env(info)
 
     assert env["DMG_URL"] == "https://example.test/bridge.dmg"
-    assert env["INSTALL_DIR"].endswith("/Applications")
+    assert Path(env["INSTALL_DIR"]).name == "Applications"
 
 
 def test_update_installer_falls_back_to_latest_dmg_download_url():
@@ -1121,3 +1122,38 @@ def test_oauth_token_mock_uses_claude_ai_provider_and_scopes():
     assert data["provider"] == "claude_ai"
     for scope in ["user:inference", "user:profile", "user:mcp_servers", "user:plugins"]:
         assert scope in data["scope"].split()
+
+
+def test_health_reports_platform_capabilities():
+    client = TestClient(proxy.app)
+    data = client.get("/health").json()
+    assert data["status"] == "ok"
+    assert data["os_family"] in {"windows", "macos", "linux"} or data["os_family"]
+    caps = data["capabilities"]
+    assert caps["user_service"] is True
+    assert caps["open_dashboard"] is True
+    if sys.platform == "win32":
+        assert data["os_family"] == "windows"
+        assert caps["desktop_app"] is False
+        assert caps["daemon_patch"] is False
+        assert caps["dmg_update"] is False
+
+
+def test_macos_only_bridge_actions_are_guarded_off_darwin():
+    if sys.platform == "darwin":
+        return
+    client = TestClient(proxy.app)
+    patch = client.post("/api/patch-model-menu").json()
+    assert patch["ok"] is False
+    open_app = client.post("/api/open-claude-science").json()
+    assert open_app["ok"] is False
+    update = client.post("/api/update-install").json()
+    assert update["ok"] is False
+
+
+def test_dashboard_is_english():
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+    assert 'lang="en"' in html
+    assert "Claude Science 控制台" not in html
+    assert "function adaptToPlatform()" in html
+    assert "Copy client env" in html

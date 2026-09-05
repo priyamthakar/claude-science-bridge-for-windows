@@ -28,6 +28,16 @@ journalctl --user -u claude-science-api-bridge.service -n 120 --no-pager
 
 If systemd user is unavailable, `scripts/install-safe.sh` starts a fallback user process and writes its PID to `~/.claude-science/proxy.pid`.
 
+On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\stop.ps1
+powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
+```
+
+The login task name is `ClaudeScienceApiBridge`. Logs are under `%USERPROFILE%\.claude-science\logs`. If port 9876 is already in use, stop the old proxy before starting a new one.
+
 ## Backend 400: Invalid Tool Schema
 
 The proxy sanitizes Claude tool schemas before sending them to OpenAI-compatible APIs. If this still appears, capture only the backend error text from `proxy.log`. Do not log full prompts or API keys.

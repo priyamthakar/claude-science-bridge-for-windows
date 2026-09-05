@@ -1,6 +1,6 @@
 # Agent Runbook
 
-This is the main step-by-step guide for an AI agent configuring this project on a user's Mac or Linux machine.
+This is the main step-by-step guide for an AI agent configuring this project on a user's Mac, Linux, or Windows machine.
 默认按安全模式执行；不要修改 Clash、VPN、TUN、DNS、系统代理、`/etc/hosts`、系统证书信任或 443 端口。
 
 ## Phase 0: Safety Check
@@ -15,6 +15,7 @@ Inspect:
 
 - macOS version
 - Linux distribution if not macOS
+- Windows version and whether WSL Ubuntu-24.04 is present
 - Python path and version
 - whether Claude Science is installed
 - whether `~/.claude-science/encryption.key` exists
@@ -31,6 +32,15 @@ Safe mode does not modify `/etc/hosts`, certificates, Clash, DNS, TUN, VPN, or p
 ```bash
 ./scripts/install-safe.sh
 ```
+
+On Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-safe.ps1
+powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
+```
+
+See `docs/windows.md`. Do not install WSL, edit system proxy, or bind port 443.
 
 This should:
 
