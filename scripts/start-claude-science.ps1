@@ -14,6 +14,10 @@ if (-not (Test-TcpOpen (Get-BridgeProxyHost) (Get-BridgeProxyPort))) {
 }
 
 Write-Output "Starting Claude Science in $Distro with ANTHROPIC_BASE_URL=$bridge"
+$winRoot = Get-BridgeRoot
+$drive = $winRoot.Substring(0,1).ToLower()
+$wslRoot = "/mnt/$drive" + ($winRoot.Substring(2) -replace '\\','/')
+$env:CLAUDE_SCIENCE_WSL_DISTRO = $Distro
+$env:CLAUDE_SCIENCE_PORT = "$Port"
 Write-Output "UI: http://127.0.0.1:$Port  (WSL forwards localhost to Windows browsers)"
-Write-Output "Leave this window open."
-wsl -d $Distro -- bash -lc "export ANTHROPIC_BASE_URL='$bridge'; exec ~/.local/bin/claude-science serve --port $Port --no-browser"
+wsl -d $Distro -- bash -lc "export BRIDGE_DIR='$wslRoot'; export ANTHROPIC_BASE_URL='$bridge'; export CLAUDE_SCIENCE_PORT='$Port'; bash `"$wslRoot/scripts/wsl-science.sh`" start"

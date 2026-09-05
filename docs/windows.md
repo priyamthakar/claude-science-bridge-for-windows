@@ -55,7 +55,23 @@ On Windows the live `/v1/models` list **is** the model menu. There is no Claude 
 | Model menu | Live `/v1/models` (no macOS daemon binary patch) |
 | Updates | `git pull` then rerun `scripts/install-safe.ps1` |
 
-macOS-only surfaces are hidden on Windows: Claude Science.app launch, daemon menu patch, LaunchAgent plist, CC Switch.app deploy, and DMG one-click update.
+## Feature map (Windows + WSL)
+
+Every Dashboard button stays visible. Windows/WSL implementations:
+
+| Dashboard action | Windows + WSL behavior |
+| --- | --- |
+| Run test | `/v1/messages` through the local proxy |
+| Open / Restart Claude Science | `claude-science serve --port 8765 --no-browser --detached` in Ubuntu-24.04 with `ANTHROPIC_BASE_URL`, then open the login URL in a Windows browser |
+| Patch model menu | Byte-patch the WSL `~/.local/bin/claude-science` binary (auth URL + display names), same scripts as macOS |
+| Refresh OAuth token | `setup-token.py` inside WSL using `~/.claude-science/encryption.key` |
+| Set user ANTHROPIC_BASE_URL | Windows `setx` **and** WSL `~/.profile` / `~/.bashrc` |
+| Install login service | Scheduled task `ClaudeScienceApiBridge` for the proxy |
+| Check / install update | `git pull --ff-only` + `pip install -r requirements.txt` (not the macOS DMG) |
+| CC Switch sync | Writes `~/.cc-switch` if that DB exists; `.app` install remains macOS-only |
+| `/v1/models` menu | Always live for any `ANTHROPIC_BASE_URL` client |
+
+Still impossible to clone 1:1: macOS `CC Switch.app` bundle replace, LaunchAgent plists, and the DMG installer. Those have the WSL/git/task replacements above.
 
 ## Install
 

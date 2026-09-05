@@ -21,7 +21,7 @@ from typing import Any
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT_DIR / "config.json"
-CCSWITCH_DIR = Path.home() / ".cc-switch"
+CCSWITCH_DIR = Path(os.environ.get("CCSWITCH_DIR") or (Path.home() / ".cc-switch")).expanduser()
 CCSWITCH_DB = CCSWITCH_DIR / "cc-switch.db"
 CCSWITCH_SETTINGS = CCSWITCH_DIR / "settings.json"
 PROVIDER_ID = "claude-science-api-bridge"

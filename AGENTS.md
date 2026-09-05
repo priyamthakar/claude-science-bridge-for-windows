@@ -26,7 +26,7 @@ If the user needs image understanding, choose a vision-capable backend model and
 
 On Linux, support covers the local proxy, Dashboard, service installation, and compatible clients that honor `ANTHROPIC_BASE_URL`. Claude Science desktop startup and daemon patches are macOS-only.
 
-On Windows, support covers the native Python proxy, English Dashboard, a per-user logon scheduled task, and `ANTHROPIC_BASE_URL` clients. Official Claude Science on Windows is the Linux binary under WSL 2; use `scripts/start-claude-science.ps1` only when that binary is already installed.
+On Windows, support covers the native Python proxy, English Dashboard, a per-user logon scheduled task, and `ANTHROPIC_BASE_URL` clients. If Ubuntu-24.04 already has `claude-science`, Dashboard Open/Restart/Patch/Token talk to that WSL binary (`scripts/wsl-science.sh`).
 
 The safe path is:
 

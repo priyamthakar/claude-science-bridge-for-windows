@@ -451,7 +451,7 @@
             <button class="btn primary" onclick="applyFetchedModels(false)">✓ Apply to menu</button>
             <button class="btn primary" data-need="daemon_patch" onclick="applyFetchedModels(true)">✓ Apply and patch menu</button>
           </div>
-          <div class="hint" style="margin-top:10px;color:var(--text-faint);font-size:12px">Apply updates <code>/v1/models</code> immediately. The macOS daemon patch is only needed for the Claude Science desktop model picker.</div>
+          <div class="hint" style="margin-top:10px;color:var(--text-faint);font-size:12px">Apply updates <code>/v1/models</code> immediately. On Windows, “Apply and patch menu” also patches the WSL <code>claude-science</code> binary display names.</div>
         </div>
       </div>
 
@@ -555,7 +555,7 @@ open -a "Claude Science"</span></div></div>
             <button class="btn sm" onclick="openLatestRelease()">Open release notes</button>
             <button class="btn sm" onclick="copyUpdateCommand()">Copy update command</button>
           </div>
-          <div class="hint" style="margin-top:10px;color:var(--text-faint);font-size:12px">One-click update downloads the macOS DMG from GitHub Latest Release into <code>~/Applications</code>. On Windows, pull git and rerun <code>scripts/install-safe.ps1</code> instead.</div>
+          <div class="hint" style="margin-top:10px;color:var(--text-faint);font-size:12px">On macOS, one-click update installs the GitHub DMG. On Windows it runs <code>git pull</code> and reinstalls Python dependencies. Restart the proxy afterwards.</div>
         </div>
       </div>
 
@@ -697,14 +697,14 @@ function cap(name) {
 function adaptToPlatform() {
   const family = osFamily();
   document.body.dataset.os = family || '';
-  document.querySelectorAll('[data-need]').forEach(el => { el.hidden = !cap(el.dataset.need); });
-  document.querySelectorAll('[data-os]').forEach(el => { el.hidden = el.dataset.os !== family; });
+  document.querySelectorAll('[data-need]').forEach(el => { el.hidden = false; });
+  document.querySelectorAll('[data-os]').forEach(el => { el.hidden = false; });
   const host = currentConfig.proxy_host || '127.0.0.1';
   const port = currentConfig.proxy_port || 9876;
   const url = `http://${host}:${port}`;
   if ($('startCmdText')) {
     if (family === 'windows') {
-      $('startCmdText').textContent = `$env:ANTHROPIC_BASE_URL="${url}"`;
+      $('startCmdText').textContent = `$env:ANTHROPIC_BASE_URL="${url}"\nwsl -d Ubuntu-24.04 -- bash -lc "export ANTHROPIC_BASE_URL='${url}'; ~/.local/bin/claude-science serve --port 8765 --no-browser --detached"`;
     } else if (family === 'linux') {
       $('startCmdText').textContent = `export ANTHROPIC_BASE_URL="${url}"`;
     } else {

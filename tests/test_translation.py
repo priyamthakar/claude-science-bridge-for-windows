@@ -1134,21 +1134,18 @@ def test_health_reports_platform_capabilities():
     assert caps["open_dashboard"] is True
     if sys.platform == "win32":
         assert data["os_family"] == "windows"
-        assert caps["desktop_app"] is False
-        assert caps["daemon_patch"] is False
-        assert caps["dmg_update"] is False
+        assert caps["git_update"] is True
+        assert "wsl_science" in caps
 
 
-def test_macos_only_bridge_actions_are_guarded_off_darwin():
-    if sys.platform == "darwin":
-        return
-    client = TestClient(proxy.app)
-    patch = client.post("/api/patch-model-menu").json()
-    assert patch["ok"] is False
-    open_app = client.post("/api/open-claude-science").json()
-    assert open_app["ok"] is False
-    update = client.post("/api/update-install").json()
-    assert update["ok"] is False
+def test_windows_wsl_helpers_are_wired():
+    assert callable(getattr(proxy, "run_wsl_science", None))
+    html = (ROOT / "static" / "dashboard.html").read_text(encoding="utf-8")
+    assert "Open Claude Science" in html
+    assert "Patch model menu" in html
+    assert "CC Switch" in html
+    assert "Install update" in html
+    assert "Refresh OAuth token" in html
 
 
 def test_dashboard_is_english():

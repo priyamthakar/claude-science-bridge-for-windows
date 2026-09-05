@@ -423,6 +423,8 @@ def mask_proxy_url(url: str) -> str:
 
 
 WINDOWS_TASK_NAME = "ClaudeScienceApiBridge"
+WSL_DISTRO = os.environ.get("CLAUDE_SCIENCE_WSL_DISTRO", "Ubuntu-24.04")
+SCIENCE_PORT = int(os.environ.get("CLAUDE_SCIENCE_PORT", "8765"))
 
 
 def platform_family() -> str:
@@ -438,20 +440,88 @@ def platform_family() -> str:
 def platform_capabilities() -> dict:
     family = platform_family()
     macos = family == "macos"
+    windows = family == "windows"
+    wsl = wsl_available()
     return {
         "platform": sys.platform,
         "os_family": family,
+        "wsl_distro": WSL_DISTRO if wsl else "",
+        "science_port": SCIENCE_PORT if (macos or wsl) else None,
         "capabilities": {
-            "desktop_app": macos,
-            "daemon_patch": macos,
-            "launch_agent": macos,
-            "ccswitch_app": macos,
+            "desktop_app": macos or wsl,
+            "daemon_patch": macos or wsl,
+            "launch_agent": True,
+            "ccswitch_app": True,
             "dmg_update": macos,
+            "git_update": windows or family == "linux",
+            "wsl_science": wsl,
             "user_service": True,
             "user_env": True,
             "open_dashboard": True,
         },
     }
+
+
+def wsl_available() -> bool:
+    return sys.platform == "win32" and shutil.which("wsl") is not None
+
+
+def windows_path_to_wsl(path: Path) -> str:
+    text = str(Path(path).resolve())
+    if len(text) >= 2 and text[1] == ":":
+        return "/mnt/" + text[0].lower() + text[2:].replace("\\", "/")
+    return text.replace("\\", "/")
+
+
+def run_wsl(command: str, timeout: int = 90) -> subprocess.CompletedProcess:
+    bridge = windows_path_to_wsl(PROXY_DIR)
+    prefix = (
+        f"export BRIDGE_DIR={json.dumps(bridge)}; "
+        f"export ANTHROPIC_BASE_URL={json.dumps(proxy_base_url())}; "
+        f"export PROXY_PORT={json.dumps(str(config.proxy_port))}; "
+        f"export CLAUDE_SCIENCE_PORT={json.dumps(str(SCIENCE_PORT))}; "
+    )
+    return subprocess.run(
+        ["wsl", "-d", WSL_DISTRO, "--", "bash", "-lc", prefix + command],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def run_wsl_science(action: str, timeout: int = 90) -> dict:
+    if not wsl_available():
+        return {"ok": False, "error": "wsl.exe not found. Install WSL 2 / Ubuntu-24.04 first."}
+    script = f'bash "$BRIDGE_DIR/scripts/wsl-science.sh" {action}'
+    try:
+        result = run_wsl(script, timeout=timeout)
+    except FileNotFoundError:
+        return {"ok": False, "error": "wsl.exe not found."}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"WSL {action} timed out after {timeout} seconds."}
+    output = "\n".join(x for x in [result.stdout.strip(), result.stderr.strip()] if x)
+    url = ""
+    match = re.search(r"https?://[^\s]+", output or "")
+    if match:
+        url = match.group(0).rstrip(").,;")
+    return {
+        "ok": result.returncode == 0,
+        "action": action,
+        "output": output[-2000:],
+        "url": url,
+        "returncode": result.returncode,
+        "distro": WSL_DISTRO,
+    }
+
+
+def open_url_in_browser(url: str) -> dict:
+    import webbrowser
+
+    try:
+        webbrowser.open(url)
+        return {"ok": True, "url": url}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "url": url}
 
 
 def run_powershell(script: str, timeout: int = 45) -> subprocess.CompletedProcess:
@@ -510,6 +580,39 @@ def set_windows_user_env(name: str, value: str) -> dict:
         "ok": True,
         "note": "Saved to the current Windows user environment. Open a new terminal to pick it up.",
     }
+
+
+def run_windows_git_update(force: bool = False) -> dict:
+    """Update the Windows git checkout and reinstall Python deps. No DMG, no system proxy changes."""
+    git = shutil.which("git")
+    if not git:
+        return {"ok": False, "error": "git not found. Pull this repo in GitHub Desktop or install Git for Windows, then rerun."}
+    try:
+        pull = subprocess.run(
+            [git, "-C", str(PROXY_DIR), "pull", "--ff-only"],
+            capture_output=True, text=True, timeout=120,
+        )
+        pip = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", str(PROXY_DIR / "requirements.txt")],
+            capture_output=True, text=True, timeout=180,
+        )
+        output = "\n".join(
+            x for x in [pull.stdout.strip(), pull.stderr.strip(), pip.stdout.strip()[-800:], pip.stderr.strip()] if x
+        )
+        ok = pull.returncode == 0 and pip.returncode == 0
+        return {
+            "ok": ok,
+            "force": force,
+            "install": {
+                "running": False,
+                "status": "succeeded" if ok else "failed",
+                "message": "Updated git checkout and Python dependencies." if ok else output[-800:],
+                "log": output.splitlines()[-20:],
+            },
+            "error": None if ok else output[-800:],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def normalize_version_tag(version: str) -> str:
@@ -2990,12 +3093,8 @@ async def api_update_install(force: bool = False):
     state = update_installer_state()
     if state.get("running"):
         return {"ok": True, "install": state}
-    if sys.platform != "darwin":
-        return {
-            "ok": False,
-            "error": "One-click DMG install is macOS-only. On Windows, pull the latest git checkout and rerun scripts/install-safe.ps1.",
-            "install": state,
-        }
+    if sys.platform == "win32":
+        return run_windows_git_update(force=force)
 
     update_info = await fetch_update_info(refresh=True)
     if not update_info.get("ok"):
@@ -3485,10 +3584,21 @@ async def api_ccswitch_apply_provider(request: Request):
 
 @app.post("/api/patch-model-menu")
 async def api_patch_model_menu():
+    if sys.platform == "win32":
+        auth = run_wsl_science("patch-auth", timeout=60)
+        models = run_wsl_science("patch-models", timeout=60)
+        ok = bool(models.get("ok"))
+        return {
+            "ok": ok,
+            "output": [auth.get("output") or "", models.get("output") or ""],
+            "auth": auth,
+            "models": models,
+            "error": None if ok else (models.get("output") or models.get("error") or "WSL model-menu patch failed"),
+        }
     if sys.platform != "darwin":
         return {
             "ok": False,
-            "error": "Daemon model-menu patch is macOS-only. On Windows the live /v1/models menu is the source of truth for ANTHROPIC_BASE_URL clients.",
+            "error": "Daemon model-menu patch needs macOS or Windows WSL with claude-science installed.",
         }
     try:
         result = subprocess.run(
@@ -3518,11 +3628,18 @@ async def api_open_dashboard():
 
 @app.post("/api/open-claude-science")
 async def api_open_claude_science():
-    """Open the Claude Science app (safe: launches the app only, no network/cert/port changes)."""
+    """Open Claude Science (macOS app, or WSL `claude-science serve` on Windows)."""
+    if sys.platform == "win32":
+        result = run_wsl_science("start", timeout=90)
+        url = result.get("url") or f"http://127.0.0.1:{SCIENCE_PORT}"
+        opened = open_url_in_browser(url)
+        result["browser"] = opened
+        result["url"] = url
+        return result
     if sys.platform != "darwin":
         return {
             "ok": False,
-            "error": "Claude Science desktop is macOS-only. On Windows open the dashboard and point clients at ANTHROPIC_BASE_URL.",
+            "error": "Claude Science desktop is macOS-only. On Linux/WSL run claude-science serve with ANTHROPIC_BASE_URL.",
         }
     try:
         result = subprocess.run(
@@ -3538,9 +3655,16 @@ async def api_open_claude_science():
 
 @app.post("/api/restart-claude-science")
 async def api_restart_claude_science():
-    """Restart Claude Science through the safe local startup script."""
+    """Restart Claude Science through the safe local startup script or WSL helper."""
+    if sys.platform == "win32":
+        result = run_wsl_science("restart", timeout=120)
+        url = result.get("url") or f"http://127.0.0.1:{SCIENCE_PORT}"
+        if result.get("ok"):
+            result["browser"] = open_url_in_browser(url)
+            result["url"] = url
+        return result
     if sys.platform != "darwin":
-        return {"ok": False, "error": "Claude Science desktop restart is macOS-only."}
+        return {"ok": False, "error": "Claude Science desktop restart needs macOS or Windows WSL."}
     script = PROXY_DIR / "scripts" / "start-claude-science.sh"
     if not script.exists():
         return {"ok": False, "error": f"Start script not found: {script}"}
@@ -3710,6 +3834,18 @@ def run_ccswitch_app_script(script_name: str, timeout: int = 180) -> dict:
 
 @app.get("/api/ccswitch-deploy-status")
 async def api_ccswitch_deploy_status():
+    if sys.platform == "win32":
+        status = run_ccswitch_integration(["--status"], timeout=15)
+        return {
+            "ok": True,
+            "platform": "windows",
+            "note": "CC Switch.app deploy/restore is macOS-only. Sync still writes ~/.cc-switch if that database exists on Windows or in WSL.",
+            "sync": status,
+            "installed": [],
+            "patched_sources": [],
+            "running": [],
+            "backups": [],
+        }
     if sys.platform != "darwin":
         return {"ok": False, "error": "CC Switch deployment is macOS-only."}
     installed = [
@@ -3727,6 +3863,14 @@ async def api_ccswitch_deploy_status():
 
 @app.post("/api/ccswitch-deploy")
 async def api_ccswitch_deploy():
+    if sys.platform == "win32":
+        sync = run_ccswitch_integration(["--activate"], timeout=30)
+        return {
+            "ok": bool(sync.get("ok")),
+            "sync": sync,
+            "note": "Synced provider profiles into ~/.cc-switch if present. Installing CC Switch.app is still macOS-only.",
+            "error": None if sync.get("ok") else (sync.get("error") or "CC Switch sync failed"),
+        }
     if sys.platform != "darwin":
         return {"ok": False, "error": "CC Switch deployment is macOS-only."}
     sync = run_ccswitch_integration(["--activate"], timeout=30)
@@ -3738,6 +3882,11 @@ async def api_ccswitch_deploy():
 
 @app.post("/api/ccswitch-restore")
 async def api_ccswitch_restore():
+    if sys.platform == "win32":
+        return {
+            "ok": False,
+            "error": "Restoring CC Switch.app is macOS-only. On Windows use Sync to rewrite ~/.cc-switch.",
+        }
     if sys.platform != "darwin":
         return {"ok": False, "error": "CC Switch restore is macOS-only."}
     result = run_ccswitch_app_script("restore-ccswitch.sh", timeout=120)
@@ -3761,6 +3910,20 @@ async def api_ccswitch_sync(request: Request):
 
 @app.post("/api/open-ccswitch")
 async def api_open_ccswitch():
+    if sys.platform == "win32":
+        candidates = [
+            Path.home() / "AppData" / "Local" / "CC Switch" / "CC Switch.exe",
+            Path.home() / "AppData" / "Local" / "Programs" / "CC Switch" / "CC Switch.exe",
+            Path("C:/Program Files/CC Switch/CC Switch.exe"),
+        ]
+        for exe in candidates:
+            if exe.exists():
+                subprocess.Popen([str(exe)], cwd=str(exe.parent))
+                return {"ok": True, "path": str(exe)}
+        return {
+            "ok": False,
+            "error": "CC Switch.exe not found on Windows. Sync still works if ~/.cc-switch exists. The .app bundle is macOS-only.",
+        }
     if sys.platform != "darwin":
         return {"ok": False, "error": "Opening CC Switch from the dashboard is macOS-only."}
     try:
@@ -3834,7 +3997,9 @@ async def api_setup_global_env():
             result = set_windows_user_env("ANTHROPIC_BASE_URL", proxy_url)
             if not result.get("ok"):
                 return result
+            wsl_env = run_wsl_science("setenv", timeout=30) if wsl_available() else {"ok": False, "error": "WSL not available"}
             result["proxy_url"] = masked
+            result["wsl"] = wsl_env
             return result
         if sys.platform == "darwin":
             subprocess.run(
@@ -3931,7 +4096,9 @@ async def api_install_service():
 
 @app.post("/api/refresh-token")
 async def api_refresh_token():
-    """Re-generate the fake OAuth token."""
+    """Re-generate the fake OAuth token (WSL ~/.claude-science on Windows)."""
+    if sys.platform == "win32" and wsl_available():
+        return run_wsl_science("token", timeout=30)
     try:
         result = subprocess.run(
             [sys.executable, str(PROXY_DIR / "setup-token.py")],
@@ -4023,6 +4190,8 @@ async def health():
         "app_version": APP_VERSION,
         "platform": info["platform"],
         "os_family": info["os_family"],
+        "wsl_distro": info.get("wsl_distro") or "",
+        "science_port": info.get("science_port"),
         "capabilities": info["capabilities"],
         "deepseek_configured": bool(config.deepseek_api_key),
         "openai_configured": bool(config.openai_api_key),
