@@ -1,4 +1,4 @@
-# Windows native setup
+# Claude Science Bridge for Windows
 
 Windows-native port of [Jyx0208/claude-science-api-bridge](https://github.com/Jyx0208/claude-science-api-bridge).
 
@@ -76,8 +76,9 @@ Still impossible to clone 1:1: macOS `CC Switch.app` bundle replace, LaunchAgent
 ## Install
 
 ```powershell
-git clone https://github.com/Jyx0208/claude-science-api-bridge.git
-cd claude-science-api-bridge
+git clone https://github.com/priyamthakar/claude-science-bridge-for-windows.git
+cd claude-science-bridge-for-windows
+git checkout windows-native
 powershell -ExecutionPolicy Bypass -File .\scripts\install-safe.ps1
 powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
 ```

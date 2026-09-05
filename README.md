@@ -1,4 +1,4 @@
-# Claude Science API Bridge
+# Claude Science Bridge for Windows
 
 Windows-native port of [Jyx0208/claude-science-api-bridge](https://github.com/Jyx0208/claude-science-api-bridge): a local Anthropic-compatible proxy so `ANTHROPIC_BASE_URL` clients can use DeepSeek, OpenAI, Kimi, or any OpenAI-compatible API.
 
@@ -62,8 +62,9 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:9876"
 Windows 原生支持本地代理、英文 Dashboard、配置管理、登录计划任务，以及任何遵守 `ANTHROPIC_BASE_URL` 的客户端。macOS 桌面补丁 / DMG / CC Switch.app 不会出现在 Windows Dashboard 里。
 
 ```powershell
-git clone https://github.com/Jyx0208/claude-science-api-bridge.git
-cd claude-science-api-bridge
+git clone https://github.com/priyamthakar/claude-science-bridge-for-windows.git
+cd claude-science-bridge-for-windows
+git checkout windows-native
 powershell -ExecutionPolicy Bypass -File .\scripts\install-safe.ps1
 powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
 ```
